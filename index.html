@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dark Kanban Manager</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+    <header>
+        <h1> Task Command</h1>
+        <button class="add-btn" onclick="openModal()">+ Nueva Tarea</button>
+    </header>
+
+    <div class="board">
+        <div class="column" id="col-todo">
+            <div class="column-header">
+                Pendientes <span class="count-badge" id="count-todo">0</span>
+            </div>
+            <div class="task-list" id="list-todo" ondrop="drop(event)" ondragover="allowDrop(event)" data-status="todo">
+            </div>
+        </div>
+
+        <div class="column" id="col-doing">
+            <div class="column-header">
+                En Proceso <span class="count-badge" id="count-doing">0</span>
+            </div>
+            <div class="task-list" id="list-doing" ondrop="drop(event)" ondragover="allowDrop(event)"
+                data-status="doing"></div>
+        </div>
+
+        <div class="column" id="col-done">
+            <div class="column-header">
+                Hechas <span class="count-badge" id="count-done">0</span>
+            </div>
+            <div class="task-list" id="list-done" ondrop="drop(event)" ondragover="allowDrop(event)" data-status="done">
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal">
+        <div class="modal">
+            <h2>Crear Nueva Tarea</h2>
+            <div class="form-group">
+                <label>Título</label>
+                <input type="text" id="t-title" placeholder="Ej: Migrar base de datos">
+            </div>
+
+            <div class="form-group" style="display: flex; gap: 10px;">
+                <div style="flex:1;">
+                    <label>Tipo (Complejidad)</label>
+                    <select id="t-type" onchange="toggleSubtasksInput()">
+                        <option value="simple">Corta / Simple</option>
+                        <option value="complex">Grande / Compleja</option>
+                    </select>
+                </div>
+                <div style="flex:1;">
+                    <label>Prioridad</label>
+                    <select id="t-priority">
+                        <option value="high">Alta 🔴</option>
+                        <option value="med" selected>Media 🟠</option>
+                        <option value="low">Baja 🟢</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group" id="subtask-input-group">
+                <label>Subtareas (Separadas por enter)</label>
+                <textarea id="t-subtasks" rows="3" placeholder="- Diseñar BD&#10;- Crear API&#10;- Testing"></textarea>
+                <small style="color: #666;">Cada línea será una checkbox.</small>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+                <button class="btn-save" onclick="saveTask()">Guardar Tarea</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+
+</body>
+
+</html>

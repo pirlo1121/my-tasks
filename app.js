@@ -13,6 +13,7 @@ const subtaskGroup = document.getElementById('subtask-input-group');
 // --- Modal Logic ---
 function openModal() {
     // Reset form
+    document.getElementById('t-id').value = '';
     document.getElementById('t-title').value = '';
     document.getElementById('t-subtasks').value = '';
     document.getElementById('t-type').value = 'simple';
@@ -33,6 +34,7 @@ function toggleSubtasksInput() {
 
 // --- Create Task Logic ---
 function saveTask() {
+    const id = document.getElementById('t-id').value;
     const title = document.getElementById('t-title').value;
     if (!title) return alert('El título es obligatorio');
 
@@ -48,16 +50,24 @@ function saveTask() {
         }));
     }
 
-    const newTask = {
-        id: Date.now().toString(),
-        title,
-        type,
-        priority,
-        status: 'todo', // Default status
-        subtasks
-    };
-
-    tasks.push(newTask);
+    if (id) {
+        // Edit existing
+        const taskIndex = tasks.findIndex(t => t.id === id);
+        if (taskIndex > -1) {
+            tasks[taskIndex] = { ...tasks[taskIndex], title, type, priority, subtasks };
+        }
+    } else {
+        // Create new
+        const newTask = {
+            id: Date.now().toString(),
+            title,
+            type,
+            priority,
+            status: 'todo', // Default status
+            subtasks
+        };
+        tasks.push(newTask);
+    }
     saveToLocal();
     closeModal();
 }
@@ -68,6 +78,26 @@ function deleteTask(id) {
         tasks = tasks.filter(t => t.id !== id);
         saveToLocal();
     }
+}
+
+function editTask(id) {
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+
+    document.getElementById('t-id').value = task.id;
+    document.getElementById('t-title').value = task.title;
+    document.getElementById('t-type').value = task.type;
+    document.getElementById('t-priority').value = task.priority;
+
+    // Handle subtasks for edit
+    if (task.type === 'complex' && task.subtasks) {
+        document.getElementById('t-subtasks').value = task.subtasks.map(s => s.text).join('\n');
+    } else {
+        document.getElementById('t-subtasks').value = '';
+    }
+
+    toggleSubtasksInput();
+    modal.style.display = 'flex';
 }
 
 // --- Toggle Subtask ---
@@ -109,19 +139,110 @@ function drop(ev) {
     const cardId = ev.dataTransfer.getData("text");
     const draggedElement = document.getElementById(cardId);
 
-    // Remove dragging class in case render doesn't happen fast enough
+    // Remove dragging class
     if (draggedElement) draggedElement.classList.remove('dragging');
 
     if (list) {
         const newStatus = list.getAttribute('data-status');
         const taskId = cardId.replace('task-', '');
 
-        const task = tasks.find(t => t.id === taskId);
-        if (task) {
-            task.status = newStatus;
-            saveToLocal();
+        // Find the task
+        const taskIndex = tasks.findIndex(t => t.id === taskId);
+        if (taskIndex === -1) return;
+
+        const task = tasks[taskIndex];
+
+        // Determine position
+        // Get all cards in the list *except* the dragged one (though it's not in DOM yet usually, but good practice)
+        // Actually, since we are dropping, we can look at where we dropped.
+        // But the standard HTML5 DnD API is a bit tricky for exact index.
+        // A common trick is to look at the element under the mouse.
+
+        // We need to find the element we dropped *before*.
+        // We can use clientY to find the closest element.
+        const afterElement = getDragAfterElement(list, ev.clientY);
+
+        // Remove task from old position
+        tasks.splice(taskIndex, 1);
+
+        // Update status
+        task.status = newStatus;
+
+        if (afterElement == null) {
+            // Add to end
+            tasks.push(task);
+        } else {
+            // Insert before the afterElement
+            const afterId = afterElement.id.replace('task-', '');
+            const afterIndex = tasks.findIndex(t => t.id === afterId);
+
+            // We need to be careful because we just removed an item, so indices might have shifted.
+            // But since we are re-building the array, maybe it's safer to just re-insert.
+            // Wait, the `tasks` array is the source of truth.
+            // If we want to insert *before* `afterId` in the `tasks` array, we need to find where `afterId` is.
+            // Note: `tasks` contains ALL tasks, not just this column's.
+            // So we can't just use the index in `tasks` directly for visual order if we just splice.
+            // BUT, if we assume the visual order reflects the array order (filtered by status), we can do this:
+
+            // 1. Filter tasks by status to get the current column's tasks in order.
+            // 2. Find the index of `afterId` in that filtered list.
+            // 3. Insert our task into that position in the filtered list.
+            // 4. Reconstruct the main `tasks` array.
+
+            // Let's try a simpler approach:
+            // We know the target status.
+            // We want to place `task` before `afterElement`.
+
+            // Let's get all tasks of the new status.
+            const statusTasks = tasks.filter(t => t.status === newStatus);
+
+            if (afterElement) {
+                const afterId = afterElement.id.replace('task-', '');
+                const targetIndexInStatus = statusTasks.findIndex(t => t.id === afterId);
+
+                // Insert into statusTasks
+                statusTasks.splice(targetIndexInStatus, 0, task);
+            } else {
+                statusTasks.push(task);
+            }
+
+            // Now we need to merge this back into the main `tasks` array.
+            // The easiest way is to keep other statuses as is, and replace the newStatus tasks.
+            const otherTasks = tasks.filter(t => t.status !== newStatus);
+
+            // If the task was moving within the same column, it was already removed from `tasks` (via splice above).
+            // If it was moving columns, it was also removed.
+            // So `otherTasks` does NOT contain our moved task.
+            // `statusTasks` contains our moved task in the right place.
+
+            // Wait, if we moved within the same column, `statusTasks` (generated from `tasks` after splice) 
+            // would be missing the moved task, which is correct.
+            // But `otherTasks` would also be missing it.
+            // So we just concatenate.
+
+            // However, we need to be careful about the order of `otherTasks`. 
+            // The user might expect them to stay in order.
+            // Since we only care about the order within each status, concatenating is fine.
+
+            tasks = [...otherTasks, ...statusTasks];
         }
+
+        saveToLocal();
     }
+}
+
+function getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.card:not(.dragging)')];
+
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) {
+            return { offset: offset, element: child };
+        } else {
+            return closest;
+        }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
 // --- Rendering ---
@@ -179,7 +300,10 @@ function renderBoard() {
             ${getPriorityLabel(task.priority)}
             ${getTypeLabel(task.type)}
         </div>
-        <button class="delete-btn" onclick="deleteTask('${task.id}')">×</button>
+        <div class="actions">
+            <button class="edit-btn" onclick="editTask('${task.id}')">✎</button>
+            <button class="delete-btn" onclick="deleteTask('${task.id}')">×</button>
+        </div>
     </div>
     <div class="card-title">${task.title}</div>
     ${subtasksHtml}
